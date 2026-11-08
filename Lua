@@ -1,0 +1,116 @@
+
+do
+    local perfectBlockCamTable = nil
+    local perfectBlockRenderId = "__perfectBlockFace"
+
+    local function perfectBlockNormalize(angle)
+        return (angle + math.pi) % (2 * math.pi) - math.pi
+    end
+
+    local function perfectBlockNearest(myRoot)
+        local best, bestDistance = nil, math.huge
+        for _, p in ipairs(players:GetPlayers()) do
+            if p ~= player and p.Character then
+                local root = p.Character:FindFirstChild("HumanoidRootPart")
+                local humanoid = p.Character:FindFirstChildOfClass("Humanoid")
+                if root and humanoid and humanoid.Health > 0 then
+                    local distance = (myRoot.Position - root.Position).Magnitude
+                    if distance < bestDistance then
+                        bestDistance = distance
+                        best = p
+                    end
+                end
+            end
+        end
+        return best
+    end
+
+    local function perfectBlockTarget(myRoot)
+        if config.riotAbuser == true and getgenv().riotResolveTarget then
+            local riotRoot = getgenv().riotResolveTarget()
+            local riotCharacter = riotRoot and riotRoot.Parent
+            local riotPlayer = riotCharacter and players:GetPlayerFromCharacter(riotCharacter)
+            if riotPlayer then
+                return riotPlayer
+            end
+        end
+        local name = config.perfectBlockTargetName
+        if name ~= nil and name ~= "" and name ~= "Closest" then
+            local named = players:FindFirstChild(name)
+            local namedCharacter = named and named.Character
+            local namedRoot = namedCharacter and namedCharacter:FindFirstChild("HumanoidRootPart")
+            local namedHumanoid = namedCharacter and namedCharacter:FindFirstChildOfClass("Humanoid")
+            if namedRoot and namedHumanoid and namedHumanoid.Health > 0 then
+                return named
+            end
+        end
+        return perfectBlockNearest(myRoot)
+    end
+
+    local function perfectBlockBody()
+        if not config.perfectBlock or not perfectBlockCamTable then
+            return
+        end
+        local myRoot = getgenv().getHumanoidRootPart(player)
+        if not myRoot then
+            return
+        end
+        local target = perfectBlockTarget(myRoot)
+        if not target then
+            return
+        end
+        local targetCharacter = target.Character
+        local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
+        if not targetRoot then
+            return
+        end
+        local targetHead = targetCharacter:FindFirstChild("Head")
+        local targetLook = targetRoot.CFrame.LookVector
+        local yaw = math.atan2(targetLook.X, targetLook.Z)
+        local pitch = 0
+        if targetHead then
+            pitch = math.asin(math.clamp(targetHead.CFrame.LookVector.Y, -1, 1))
+        end
+        perfectBlockCamTable.Rotation = Vector2.new(-pitch, perfectBlockNormalize(yaw + math.pi))
+        if config.riotAbuser == true then
+            return
+        end
+        local counter = Vector3.new(-targetLook.X, 0, -targetLook.Z)
+        if counter.Magnitude > 0.001 then
+            pcall(function()
+                myRoot.CFrame = CFrame.lookAt(myRoot.Position, myRoot.Position + counter.Unit)
+                myRoot.AssemblyAngularVelocity = Vector3.zero
+            end)
+        end
+    end
+
+    local function perfectBlockApply()
+        pcall(perfectBlockBody)
+    end
+
+    getgenv().perfectBlockActive = false
+    getgenv().startPerfectBlock = function()
+        if getgenv().perfectBlockActive then
+            return
+        end
+        getgenv().perfectBlockActive = true
+        config.perfectBlock = true
+        perfectBlockCamTable = findRotationCameraTable(perfectBlockCamTable)
+        startAntiAimHooks()
+        perfectBlockCamTable = findRotationCameraTable(perfectBlockCamTable)
+        getgenv().perfectBlockApply = perfectBlockApply
+        pcall(function() runService:UnbindFromRenderStep(perfectBlockRenderId) end)
+        pcall(function()
+            runService:BindToRenderStep(perfectBlockRenderId, Enum.RenderPriority.Character.Value - 1, perfectBlockApply)
+        end)
+    end
+
+    getgenv().stopPerfectBlock = function()
+        getgenv().perfectBlockActive = false
+        config.perfectBlock = false
+        getgenv().perfectBlockApply = nil
+        pcall(function() runService:UnbindFromRenderStep(perfectBlockRenderId) end)
+        if not antiAimHooksNeeded() then
+            stopAntiAimHooks()
+        end
+    end
